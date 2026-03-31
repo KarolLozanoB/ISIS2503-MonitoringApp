@@ -38,7 +38,7 @@ variable "project_prefix" {
 variable "instance_type" {
   description = "EC2 instance type for application hosts"
   type        = string
-  default     = "t2.nano"
+  default     = "t2.micro"
 }
 
 # Proveedor. Define el proveedor de infraestructura (AWS) y la región.
