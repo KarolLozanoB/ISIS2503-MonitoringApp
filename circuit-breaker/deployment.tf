@@ -4,49 +4,23 @@
 #
 # Infraestructura para laboratorio de Circuit Breaker
 #
-# Elementos a desplegar en AWS:
-# 1. Grupos de seguridad:
-#    - cbd-traffic-django-new (puerto 8080)
-#    - cbd-traffic-cb-new (puertos 8000 y 8001)
-#    - cbd-traffic-db-new (puerto 5432)
-#    - cbd-traffic-ssh-new (puerto 22)
-#
-# 2. Instancias EC2:
-#    - cbd-kong
-#    - cbd-db (PostgreSQL instalado y configurado)
-#    - cbd-monitoring (Monitoring app instalada y migraciones aplicadas)
-#    - cbd-alarms-a (Monitoring app instalada)
-#    - cbd-alarms-b (Monitoring app instalada)
-#    - cbd-alarms-c (Monitoring app instalada)
-# ******************************************************************
 
-# Variable. Define la región de AWS donde se desplegará la infraestructura.
 variable "region" {
   description = "AWS region for deployment"
   type        = string
   default     = "us-east-1"
 }
 
-# Variable. Define el prefijo usado para nombrar los recursos en AWS.
 variable "project_prefix" {
   description = "Prefix used for naming AWS resources"
   type        = string
   default     = "cbd"
 }
 
-# Variable. Define el tipo de instancia EC2 a usar para las máquinas virtuales.
-variable "instance_type" {
-  description = "EC2 instance type for application hosts"
-  type        = string
-  default     = "t2.nano"
-}
-
-# Proveedor. Define el proveedor de infraestructura (AWS) y la región.
 provider "aws" {
   region = var.region
 }
 
-# Variables locales usadas en la configuración de Terraform.
 locals {
   project_name = "${var.project_prefix}-circuit-breaker"
   repository   = "https://github.com/ISIS2503/ISIS2503-MonitoringApp.git"
@@ -58,83 +32,69 @@ locals {
   }
 }
 
-# Data Source. Busca la AMI más reciente de Ubuntu 24.04 usando los filtros especificados.
 data "aws_ami" "ubuntu" {
-    most_recent = true
-    owners      = ["099720109477"]
+  most_recent = true
+  owners      = ["099720109477"]
 
-    filter {
-        name   = "name"
-        values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
-    }
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
 
-    filter {
-        name   = "virtualization-type"
-        values = ["hvm"]
-    }
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
-# Recurso. Define el grupo de seguridad para el tráfico de Django (8080).
-resource "aws_security_group" "traffic_django_new" {
-    name        = "${var.project_prefix}-traffic-django-new"
-    description = "Allow application traffic on port 8080"
+# Grupos de seguridad
+resource "aws_security_group" "traffic_django" {
+  name        = "${var.project_prefix}-traffic-django"
+  description = "Allow application traffic on port 8080"
 
-    ingress {
-        description = "HTTP access for service layer"
-        from_port   = 8080
-        to_port     = 8080
-        protocol    = "tcp"
-        cidr_blocks = ["0.0.0.0/0"]
-    }
+  ingress {
+    from_port   = 8080
+    to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 
-    tags = merge(local.common_tags, {
-        Name = "${var.project_prefix}-traffic-services"
-    })
+  tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-services" })
 }
 
-# Recurso. Define el grupo de seguridad para el tráfico del Circuit Breaker (8000, 8001).
-resource "aws_security_group" "traffic_cb_new" {
-  name        = "${var.project_prefix}-traffic-cb-new"
+resource "aws_security_group" "traffic_cb" {
+  name        = "${var.project_prefix}-traffic-cb"
   description = "Expose Kong circuit breaker ports"
 
   ingress {
-    description = "Kong traffic"
     from_port   = 8000
     to_port     = 8001
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-traffic-cb-new"
-  })
+  tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-cb" })
 }
 
-# Recurso. Define el grupo de seguridad para el tráfico de la base de datos (5432).
-resource "aws_security_group" "traffic_db_new" {
-  name        = "${var.project_prefix}-traffic-db-new"
+resource "aws_security_group" "traffic_db" {
+  name        = "${var.project_prefix}-traffic-db"
   description = "Allow PostgreSQL access"
 
   ingress {
-    description = "Traffic from anywhere to DB"
     from_port   = 5432
     to_port     = 5432
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-traffic-db-new"
-  })
+  tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-db" })
 }
 
-# Recurso. Define el grupo de seguridad para el tráfico SSH (22) y permite todo el tráfico saliente.
-resource "aws_security_group" "traffic_ssh_new" {
-  name        = "${var.project_prefix}-traffic-ssh-new"
+resource "aws_security_group" "traffic_ssh" {
+  name        = "${var.project_prefix}-traffic-ssh"
   description = "Allow SSH access"
 
   ingress {
-    description = "SSH access from anywhere"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
@@ -142,25 +102,21 @@ resource "aws_security_group" "traffic_ssh_new" {
   }
 
   egress {
-    description = "Allow all outbound traffic"
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-traffic-ssh-new"
-  })
+  tags = merge(local.common_tags, { Name = "${var.project_prefix}-traffic-ssh" })
 }
 
-# Recurso. Define la instancia EC2 para Kong (Circuit Breaker).
-# Esta instancia se crea planamente sin configuración adicional.
+# Instancia Kong (ligera, se queda en nano)
 resource "aws_instance" "kong" {
   ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.instance_type
+  instance_type               = "t2.nano"
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_cb_new.id, aws_security_group.traffic_ssh_new.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_cb.id, aws_security_group.traffic_ssh.id]
 
   tags = merge(local.common_tags, {
     Name = "${var.project_prefix}-kong"
@@ -168,26 +124,25 @@ resource "aws_instance" "kong" {
   })
 }
 
-# Recurso. Define la instancia EC2 para la base de datos PostgreSQL.
-# Esta instancia incluye un script de creación para instalar y configurar PostgreSQL.
-# El script crea un usuario y una base de datos, y ajusta la configuración para permitir conexiones remotas.
+# Instancia Base de Datos (pesada, se sube a micro)
 resource "aws_instance" "database" {
   ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.instance_type
+  instance_type               = "t2.micro"
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_db_new.id, aws_security_group.traffic_ssh_new.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_db.id, aws_security_group.traffic_ssh.id]
 
   user_data = <<-EOT
               #!/bin/bash
-
               sudo apt-get update -y
               sudo apt-get install -y postgresql postgresql-contrib
 
               sudo -u postgres psql -c "CREATE USER monitoring_user WITH PASSWORD 'isis2503';"
               sudo -u postgres createdb -O monitoring_user monitoring_db
-              echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/16/main/pg_hba.conf
-              echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
-              echo "max_connections=2000" | sudo tee -a /etc/postgresql/16/main/postgresql.conf
+
+              PG_VERSION=$(ls /etc/postgresql/)
+              echo "host all all 0.0.0.0/0 trust" | sudo tee -a /etc/postgresql/$PG_VERSION/main/pg_hba.conf
+              echo "listen_addresses='*'" | sudo tee -a /etc/postgresql/$PG_VERSION/main/postgresql.conf
+              echo "max_connections=2000" | sudo tee -a /etc/postgresql/$PG_VERSION/main/postgresql.conf
               sudo service postgresql restart
               EOT
 
@@ -197,16 +152,14 @@ resource "aws_instance" "database" {
   })
 }
 
-# Recurso. Define las instancias EC2 para el servicio de alarmas de la aplicación de Monitoring.
-# Se crean tres instancias (a, b, c) usando un bucle.
-# Cada instancia incluye un script de creación para instalar la aplicación de Monitoring.
+# Instancias Alarms (ligeras, se quedan en nano)
 resource "aws_instance" "alarms" {
   for_each = toset(["a", "b", "c"])
 
   ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.instance_type
+  instance_type               = "t2.nano"
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_django_new.id, aws_security_group.traffic_ssh_new.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
 
   user_data = <<-EOT
               #!/bin/bash
@@ -236,17 +189,12 @@ resource "aws_instance" "alarms" {
   })
 }
 
-#//////////////
-# Recurso. Define las instancias EC2 para el servicio de monitoring de la aplicación de Monitoring.
-# Se crean tres instancias (a, b, c) usando un bucle.
-# Cada instancia incluye un script de creación para instalar la aplicación de Monitoring.
+# Instancia Monitoring (pesada, se sube a micro)
 resource "aws_instance" "monitoring" {
-  for_each = toset(["a", "b", "c"])
-
   ami                         = data.aws_ami.ubuntu.id
-  instance_type               = var.instance_type
+  instance_type               = "t2.micro"
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_django_new.id, aws_security_group.traffic_ssh_new.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
 
   user_data = <<-EOT
               #!/bin/bash
@@ -268,53 +216,40 @@ resource "aws_instance" "monitoring" {
               git checkout ${local.branch}
               sudo pip3 install --upgrade pip --break-system-packages
               sudo pip3 install -r requirements.txt --break-system-packages
+
+              sudo python3 manage.py makemigrations
+              sudo python3 manage.py migrate
               EOT
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-monitoring-${each.key}"
+    Name = "${var.project_prefix}-monitoring"
     Role = "monitoring-app"
   })
 
   depends_on = [aws_instance.database]
 }
 
-#//////////////
-
-# Borrar la anterior instancia de monitoring
-
-
-# Salida. Muestra la dirección IP pública de la instancia de Kong (Circuit Breaker).
+# Outputs
 output "kong_public_ip" {
-  description = "Public IP address for the Kong circuit breaker instance"
-  value       = aws_instance.kong.public_ip
+  value = aws_instance.kong.public_ip
 }
 
-# Salida. Muestra las direcciones IP públicas de las instancias de la aplicación de alarmas.
 output "alarms_public_ips" {
-  description = "Public IP addresses for the alarms service instances"
-  value       = { for id, instance in aws_instance.alarms : id => instance.public_ip }
+  value = { for id, instance in aws_instance.alarms : id => instance.public_ip }
 }
 
-# Salida. Muestra la dirección IP pública de la instancia de la aplicación de Monitoring.
-output "monitoring_public_ips" {
-  description = "Public IP address for the monitoring service application"
-  value       = { for id, instance in aws_instance.monitoring : id => instance.public_ip }
+output "monitoring_public_ip" {
+  value = aws_instance.monitoring.public_ip
 }
 
-# Salida. Muestra las direcciones IP privadas de las instancias de la aplicación de alarmas.
 output "alarms_private_ips" {
-  description = "Private IP addresses for the alarms service instances"
-  value       = { for id, instance in aws_instance.alarms : id => instance.private_ip }
+  value = { for id, instance in aws_instance.alarms : id => instance.private_ip }
 }
 
-# Salida. Muestra la dirección IP privada de la instancia de la aplicación de Monitoring.
-output "monitoring_private_ips" {
-  description = "Private IP address for the monitoring service application"
-  value       = { for id, instance in aws_instance.monitoring : id => instance.private_ip }
+output "monitoring_private_ip" {
+  value = aws_instance.monitoring.private_ip
 }
 
-# Salida. Muestra la dirección IP privada de la instancia de la base de datos PostgreSQL.
 output "database_private_ip" {
-  description = "Private IP address for the PostgreSQL database instance"
-  value       = aws_instance.database.private_ip
+  value = aws_instance.database.private_ip
 }
