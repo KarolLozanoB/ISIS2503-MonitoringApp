@@ -6,10 +6,10 @@
 #
 # Elementos a desplegar en AWS:
 # 1. Grupos de seguridad:
-#    - cbd-traffic-django (puerto 8080)
-#    - cbd-traffic-cb (puertos 8000 y 8001)
-#    - cbd-traffic-db (puerto 5432)
-#    - cbd-traffic-ssh (puerto 22)
+#    - cbd-traffic-django-new (puerto 8080)
+#    - cbd-traffic-cb-new (puertos 8000 y 8001)
+#    - cbd-traffic-db-new (puerto 5432)
+#    - cbd-traffic-ssh-new (puerto 22)
 #
 # 2. Instancias EC2:
 #    - cbd-kong
@@ -75,8 +75,8 @@ data "aws_ami" "ubuntu" {
 }
 
 # Recurso. Define el grupo de seguridad para el tráfico de Django (8080).
-resource "aws_security_group" "traffic_django" {
-    name        = "${var.project_prefix}-traffic-django"
+resource "aws_security_group" "traffic_django_new" {
+    name        = "${var.project_prefix}-traffic-django-new"
     description = "Allow application traffic on port 8080"
 
     ingress {
@@ -93,8 +93,8 @@ resource "aws_security_group" "traffic_django" {
 }
 
 # Recurso. Define el grupo de seguridad para el tráfico del Circuit Breaker (8000, 8001).
-resource "aws_security_group" "traffic_cb" {
-  name        = "${var.project_prefix}-traffic-cb"
+resource "aws_security_group" "traffic_cb_new" {
+  name        = "${var.project_prefix}-traffic-cb-new"
   description = "Expose Kong circuit breaker ports"
 
   ingress {
@@ -106,13 +106,13 @@ resource "aws_security_group" "traffic_cb" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-traffic-cb"
+    Name = "${var.project_prefix}-traffic-cb-new"
   })
 }
 
 # Recurso. Define el grupo de seguridad para el tráfico de la base de datos (5432).
-resource "aws_security_group" "traffic_db" {
-  name        = "${var.project_prefix}-traffic-db"
+resource "aws_security_group" "traffic_db_new" {
+  name        = "${var.project_prefix}-traffic-db-new"
   description = "Allow PostgreSQL access"
 
   ingress {
@@ -124,13 +124,13 @@ resource "aws_security_group" "traffic_db" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-traffic-db"
+    Name = "${var.project_prefix}-traffic-db-new"
   })
 }
 
 # Recurso. Define el grupo de seguridad para el tráfico SSH (22) y permite todo el tráfico saliente.
-resource "aws_security_group" "traffic_ssh" {
-  name        = "${var.project_prefix}-traffic-ssh"
+resource "aws_security_group" "traffic_ssh_new" {
+  name        = "${var.project_prefix}-traffic-ssh-new"
   description = "Allow SSH access"
 
   ingress {
@@ -150,7 +150,7 @@ resource "aws_security_group" "traffic_ssh" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_prefix}-traffic-ssh"
+    Name = "${var.project_prefix}-traffic-ssh-new"
   })
 }
 
@@ -160,7 +160,7 @@ resource "aws_instance" "kong" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_cb.id, aws_security_group.traffic_ssh.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_cb_new.id, aws_security_group.traffic_ssh_new.id]
 
   tags = merge(local.common_tags, {
     Name = "${var.project_prefix}-kong"
@@ -175,7 +175,7 @@ resource "aws_instance" "database" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_db.id, aws_security_group.traffic_ssh.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_db_new.id, aws_security_group.traffic_ssh_new.id]
 
   user_data = <<-EOT
               #!/bin/bash
@@ -206,7 +206,7 @@ resource "aws_instance" "alarms" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_django_new.id, aws_security_group.traffic_ssh_new.id]
 
   user_data = <<-EOT
               #!/bin/bash
@@ -246,7 +246,7 @@ resource "aws_instance" "monitoring" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = var.instance_type
   associate_public_ip_address = true
-  vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
+  vpc_security_group_ids      = [aws_security_group.traffic_django_new.id, aws_security_group.traffic_ssh_new.id]
 
   user_data = <<-EOT
               #!/bin/bash
