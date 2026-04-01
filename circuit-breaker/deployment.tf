@@ -249,13 +249,19 @@ resource "aws_instance" "monitoring" {
   associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.traffic_django.id, aws_security_group.traffic_ssh.id]
 
-  user_data = <<-EOT
+user_data = <<-EOT
               #!/bin/bash
+              set -e
+
+              # Esperar a que la DB esté lista
+              sleep 20
 
               sudo export DATABASE_HOST=${aws_instance.database.private_ip}
               echo "DATABASE_HOST=${aws_instance.database.private_ip}" | sudo tee -a /etc/environment
 
-              sudo apt-get update -y
+              # Reintentos en apt-get update
+              sudo apt-get update -y || (sleep 10 && sudo apt-get update -y)
+
               sudo apt-get install -y python3-pip git build-essential libpq-dev python3-dev
 
               mkdir -p /labs
@@ -268,12 +274,10 @@ resource "aws_instance" "monitoring" {
               cd ISIS2503-MonitoringApp
               git fetch origin ${local.branch}
               git checkout ${local.branch}
+
               sudo pip3 install --upgrade pip --break-system-packages
               sudo pip3 install -r requirements.txt --break-system-packages
-
-              sudo python3 manage.py makemigrations
-              sudo python3 manage.py migrate
-              EOT
+EOT
 
   tags = merge(local.common_tags, {
     Name = "${var.project_prefix}-monitoring-${each.key}"
