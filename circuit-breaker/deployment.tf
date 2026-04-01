@@ -234,6 +234,9 @@ resource "aws_instance" "alarms" {
     Name = "${var.project_prefix}-alarms-${each.key}"
     Role = "alarms"
   })
+
+  depends_on = [aws_instance.database]
+  
 }
 
 # Recurso. Define la instancia EC2 para la aplicación de Monitoring (Django).
